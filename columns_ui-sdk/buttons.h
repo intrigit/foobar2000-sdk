@@ -102,6 +102,8 @@ public:
     virtual t_button_guid get_guid_type() const { return BUTTON_GUID_MENU_ITEM_MAIN; }
 
     /**
+     * \deprecated Use button_v2::get_item_bitmap() instead.
+     *
      * \brief Get a handle to a bitmap and its transparency mask of the menu item.
      *
      * Caller presumes ownership of bitmap.
@@ -116,7 +118,7 @@ public:
      * \note Ensure you do not create a mask bitmap if you fail to create main bitmap
      *
      * \remark    Masks generated from a colour are only supported on bitmaps with
-     *            a colour depth less than or equal too 8bpp.
+     *            a colour depth less than or equal to 8bpp.
      *
      * \return HBITMAP of menu item
      */
@@ -223,18 +225,22 @@ public:
      *
      * \note Use alpha channel for transparency.
      *
+     * \note You can vary the returned image depending on whether dark mode is active by using
+     *       cui::colours::is_dark_mode_active(). All button images are flushed when the dark
+     *       mode status changes.
+     *
      * \return Handle of image
      */
     virtual HANDLE get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext, unsigned cx_hint,
         unsigned cy_hint, unsigned& handle_type) const = 0;
 
     /**
-     * \brief Not used.
+     * \brief Deprecated uie::button method, not used for uie::button_v2.
      */
-    virtual HBITMAP get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext, t_mask& p_mask_type,
-        COLORREF& cr_mask, HBITMAP& bm_mask) const
+    HBITMAP get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext, t_mask& p_mask_type, COLORREF& cr_mask,
+        HBITMAP& bm_mask) const override
     {
-        return NULL;
+        return nullptr;
     }
 
     FB2K_MAKE_SERVICE_INTERFACE(button_v2, button);
@@ -258,7 +264,7 @@ public:
 /** \brief Sub-class of uie::button, for buttons that implement their own command */
 class NOVTABLE custom_button : public button {
 public:
-    virtual t_button_guid get_guid_type() const { return BUTTON_GUID_BUTTON; }
+    t_button_guid get_guid_type() const override { return BUTTON_GUID_BUTTON; }
 
     /**
      * \brief Executes the custom button's command

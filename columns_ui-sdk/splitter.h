@@ -48,11 +48,25 @@ public:
         return false;
     }
 
-    void get_panel_config_to_array(pfc::array_t<uint8_t>& p_data, bool reset = false) const
+    void get_panel_config_to_array(pfc::array_t<uint8_t>& p_data, bool reset = false, bool refresh = false) const
     {
-        stream_writer_memblock_ref writer(p_data, reset);
-        get_panel_config(&writer);
+        const auto window = get_window_ptr();
+
+        if (refresh && window.is_valid()) {
+            window->get_config_to_array(p_data, fb2k::noAbort, reset);
+        } else {
+            stream_writer_memblock_ref writer(p_data, reset);
+            get_panel_config(&writer);
+        }
     }
+
+    pfc::array_t<uint8_t> get_panel_config_to_array(bool refresh = false) const
+    {
+        pfc::array_t<uint8_t> data;
+        get_panel_config_to_array(data, false, refresh);
+        return data;
+    }
+
     void set_panel_config_from_ptr(const void* p_data, t_size p_size)
     {
         stream_reader_memblock_ref reader(p_data, p_size);
@@ -220,7 +234,7 @@ public:
 
 class stream_writer_fixedbuffer : public stream_writer {
 public:
-    void write(const void* p_buffer, t_size p_bytes, abort_callback& p_abort)
+    void write(const void* p_buffer, t_size p_bytes, abort_callback& p_abort) override
     {
         if (p_bytes > 0) {
             if (p_bytes > m_bytes - m_bytes_read)
@@ -230,7 +244,9 @@ public:
         }
     }
     stream_writer_fixedbuffer(void* p_out, t_size p_bytes, t_size& p_bytes_read)
-        : m_out(p_out), m_bytes(p_bytes), m_bytes_read(p_bytes_read)
+        : m_out(p_out)
+        , m_bytes(p_bytes)
+        , m_bytes_read(p_bytes_read)
     {
         m_bytes_read = 0;
     }

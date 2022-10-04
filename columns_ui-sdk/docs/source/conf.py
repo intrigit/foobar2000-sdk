@@ -1,5 +1,6 @@
 import os
 import subprocess
+from datetime import date
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -18,7 +19,6 @@ import subprocess
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
-
 read_the_docs_build = os.environ.get('READTHEDOCS', None) == 'True'
 
 if read_the_docs_build:
@@ -27,7 +27,7 @@ if read_the_docs_build:
 # -- Project information -----------------------------------------------------
 
 project = 'Columns UI SDK'
-copyright = '2019, Reupen Shah'
+copyright = f'Reupen Shah {date.today().year}'
 author = 'Reupen Shah'
 
 
@@ -45,6 +45,7 @@ breathe_projects = {
 }
 breathe_default_project = "columns-ui-sdk"
 breathe_default_members = ('members', 'undoc-members')
+breathe_show_include = False
 
 # Tell sphinx what the primary language being documented is.
 primary_domain = 'cpp'

@@ -1,7 +1,12 @@
 #ifndef _UI_EXTENSION_H_
 #define _UI_EXTENSION_H_
 
-#define UI_EXTENSION_VERSION "6.5"
+#define UI_EXTENSION_VERSION "7.0.0-beta.2"
+
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
 // Included first, because pfc.h includes winsock2.h
 #include "../pfc/pfc.h"
@@ -10,17 +15,9 @@
 
 #include "../foobar2000/SDK/foobar2000.h"
 
-/**
- * \file ui_extension.h
- * \brief User interface extension API
- * \author musicmusic
- * \author Holger Stenger (original doxygen comments)
- * \version 6.5
- */
-
 // ripped from stream_reader::read_string_raw
 void stream_to_mem_block(stream_reader* p_source, pfc::array_t<t_uint8>& p_out, abort_callback& p_abort,
-    unsigned p_sizehint = 0, bool b_reset = false);
+    size_t p_sizehint = 0, bool b_reset = false);
 
 class stream_writer_memblock_ref : public stream_writer {
 public:
@@ -29,7 +26,7 @@ public:
         if (b_reset)
             m_data.set_size(0);
     };
-    void write(const void* p_buffer, t_size p_bytes, abort_callback& p_abort)
+    void write(const void* p_buffer, t_size p_bytes, abort_callback& p_abort) override
     {
         m_data.append_fromptr((t_uint8*)p_buffer, p_bytes);
     }
@@ -41,7 +38,7 @@ private:
 class stream_writer_memblock : public stream_writer {
 public:
     stream_writer_memblock(){};
-    void write(const void* p_buffer, t_size p_bytes, abort_callback& p_abort)
+    void write(const void* p_buffer, t_size p_bytes, abort_callback& p_abort) override
     {
         m_data.append_fromptr((t_uint8*)p_buffer, p_bytes);
     }
@@ -142,7 +139,8 @@ namespace ui_extension = uie;
 #include "window.h"
 #include "win32_helpers.h"
 #include "window_helper.h"
-#include "container_window_v2.h"
+#include "container_window_v3.h"
+#include "container_uie_window_v3.h"
 #include "splitter.h"
 #include "visualisation.h"
 #include "buttons.h"

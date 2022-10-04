@@ -16,6 +16,7 @@ enum colour_identifier_t {
     /** Reserved */
     colour_group_background,
 };
+
 enum colour_flag_t {
     colour_flag_text = 1 << colour_text,
     colour_flag_selection_text = 1 << colour_selection_text,
@@ -32,13 +33,21 @@ enum colour_flag_t {
         | (1 << colour_active_item_frame) | (1 << colour_group_foreground) | (1 << colour_group_background),
 
 };
+
 enum bool_identifier_t {
     bool_use_custom_active_item_frame,
+    /**
+     * Implemented in Columns UI 2.0. Always false on older versions.
+     *
+     * \see helper for more details
+     */
+    bool_dark_mode_enabled,
 };
+
 enum bool_flag_t {
     bool_flag_use_custom_active_item_frame = (1 << bool_use_custom_active_item_frame),
+    bool_flag_dark_mode_enabled = (1 << bool_dark_mode_enabled),
 };
-enum colour_mode_t { colour_mode_global, colour_mode_system, colour_mode_themed, colour_mode_custom };
 
 static COLORREF g_get_system_color(const colour_identifier_t p_identifier)
 {
@@ -71,7 +80,7 @@ public:
     virtual bool get_bool(const bool_identifier_t& p_identifier) const = 0;
 
     /**
-     * Only returns true if your appearance_client::get_themes_supported does.
+     * Only returns true if your client::get_themes_supported() method does.
      * Indicates selected items should be drawn using Theme API.
      */
     virtual bool get_themed() const = 0;
@@ -84,8 +93,8 @@ public:
  */
 class NOVTABLE common_callback {
 public:
-    virtual void on_colour_changed(t_size mask) const = 0;
-    virtual void on_bool_changed(t_size mask) const = 0;
+    virtual void on_colour_changed(uint32_t changed_items_mask) const = 0;
+    virtual void on_bool_changed(uint32_t changed_items_mask) const = 0;
 };
 
 /**
@@ -107,20 +116,22 @@ public:
 /** Helper to simplify retrieving colours. */
 class helper {
 public:
-    COLORREF get_colour(const cui::colours::colour_identifier_t& p_identifier) const
+    COLORREF get_colour(const colour_identifier_t& p_identifier) const
     {
         if (m_api.is_valid()) {
             return m_api->get_colour(p_identifier);
         }
         return g_get_system_color(p_identifier);
     }
-    bool get_bool(const cui::colours::bool_identifier_t& p_identifier) const
+
+    bool get_bool(const bool_identifier_t& p_identifier) const
     {
         if (m_api.is_valid()) {
             return m_api->get_bool(p_identifier);
         }
         return false;
     }
+
     bool get_themed() const
     {
         if (m_api.is_valid()) {
@@ -128,37 +139,103 @@ public:
         }
         return false;
     }
-    /** You can specify a NULL GUID for the global colours */
-    helper(GUID p_guid)
+
+    /**
+     * \brief Get whether the UI-wide dark mode is currently active.
+     *
+     * Implemented in Columns UI 2.0. Always false on older versions.
+     *
+     * There is only one global value of this flag; it does not vary between colour clients.
+     *
+     * If your window contains a scroll bar, you should call SetWindowTheme based on the value
+     * of this flag as follows:
+     *
+     * \code{.cpp}
+     * const auto dark_mode_active = cui::colours::is_dark_mode_active().
+     * SetWindowTheme(wnd, dark_mode_active ? L"DarkMode_Explorer" : nullptr, nullptr);
+     * \endcode
+     *
+     * You should also do this when the client::on_bool_changed() method of your client is
+     * called with the #bool_flag_dark_mode_enabled bit set.
+     */
+    bool is_dark_mode_active() const
+    {
+        if (m_api.is_valid()) {
+            return m_api->get_bool(bool_dark_mode_enabled);
+        }
+        return false;
+    }
+
+    /** You can omit guid for the global colours */
+    helper(GUID guid = GUID{})
     {
         try {
             manager::ptr api;
             standard_api_create_t(api);
-            api->create_instance(p_guid, m_api);
+            api->create_instance(guid, m_api);
         } catch (const exception_service_not_found&) {
-        };
+        }
     }
 
 private:
-    service_ptr_t<cui::colours::manager_instance> m_api;
+    service_ptr_t<manager_instance> m_api;
 };
+
+/**
+ * \brief Get whether the UI-wide dark mode is currently active.
+ *
+ * Convenience method to avoid having to instantiate a helper instance.
+ *
+ * \see helper::is_dark_mode_active() for more details.
+ */
+bool is_dark_mode_active();
 
 class NOVTABLE client : public service_base {
 public:
     virtual const GUID& get_client_guid() const = 0;
     virtual void get_name(pfc::string_base& p_out) const = 0;
 
-    virtual t_size get_supported_colours() const
+    virtual uint32_t get_supported_colours() const
     {
         return cui::colours::colour_flag_all
             & ~(cui::colours::colour_flag_group_foreground | cui::colours::colour_flag_group_background);
-    } // bit-mask
-    virtual t_size get_supported_bools() const = 0; // bit-mask
+    }
+
+    /**
+     * Return a combination of bool_flag_t to indicate which boolean flags are supported.
+     *
+     * If dark mode is supported by your panel, you should set the #bool_flag_dark_mode_enabled bit.
+     */
+    virtual uint32_t get_supported_bools() const = 0; // bit-mask
     /** Indicates whether you are Theme API aware and can draw selected items using Theme API */
     virtual bool get_themes_supported() const = 0;
 
-    virtual void on_colour_changed(t_size mask) const = 0;
-    virtual void on_bool_changed(t_size mask) const = 0;
+    virtual void on_colour_changed(uint32_t changed_items_mask) const = 0;
+
+    /**
+     * Called whenever a supported boolean flag changes. Support for a flag is determined using the
+     * get_supported_bools() method.
+     *
+     * \param [in] changed_items_mask  a combination of bool_flag_t indicating the flags that have
+     *                                 changed. (Only indicates which flags have changed, not the
+     *                                 new values.)
+     *
+     * \note Only #bool_flag_dark_mode_enabled is currently supported. Ensure you inspect
+     * <code>changed_items_mask</code> to check which flags have changed.
+     *
+     * Example implementation:
+     *
+     * \code{.cpp}
+     * void on_bool_changed(uint32_t changed_items_mask) const override
+     * {
+     *     if (changed_items_mask & colours::bool_flag_dark_mode_enabled) {
+     *         const auto is_dark = cui::colours::is_dark_mode_active();
+     *         // Handle dark mode change
+     *     }
+     * }
+     * \endcode
+     */
+    virtual void on_bool_changed(uint32_t changed_items_mask) const = 0;
 
     template <class tClass>
     class factory : public service_factory_t<tClass> {
@@ -166,7 +243,43 @@ public:
 
     FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT(client);
 };
-}; // namespace colours
+
+/**
+ * Helper for receiving notifications when the global dark mode status changes.
+ *
+ * This is mainly used by non-panel parts of the UI. Panels would normally receive
+ * this notification through the on_bool_changed method of their client instance.
+ */
+class dark_mode_notifier : common_callback {
+public:
+    dark_mode_notifier(std::function<void()> callback) : m_callback(std::move(callback))
+    {
+        if (fb2k::std_api_try_get(m_api)) {
+            m_api->register_common_callback(this);
+        }
+    }
+
+    ~dark_mode_notifier()
+    {
+        if (m_api.is_valid()) {
+            m_api->deregister_common_callback(this);
+        }
+    }
+
+    void on_colour_changed(uint32_t changed_items_mask) const override {}
+    void on_bool_changed(uint32_t changed_items_mask) const override
+    {
+        if (changed_items_mask & bool_flag_dark_mode_enabled)
+            m_callback();
+    }
+
+private:
+    std::function<void()> m_callback;
+    manager::ptr m_api;
+};
+
+} // namespace colours
+
 namespace fonts {
 enum font_mode_t {
     font_mode_common_items,
@@ -189,13 +302,13 @@ enum font_type_flag_t {
  */
 class NOVTABLE common_callback {
 public:
-    virtual void on_font_changed(t_size mask) const = 0;
+    virtual void on_font_changed(uint32_t changed_items_mask) const = 0;
 };
 
 /** One implementation in Columns UI - do not reimplement! */
 class NOVTABLE manager : public service_base {
 public:
-    /** \brief Retreives the font for the given client */
+    /** \brief Retrieves the font for the given client */
     virtual void get_font(const GUID& p_guid, LOGFONT& p_out) const = 0;
 
     /** \brief Retrieves common fonts. */
@@ -225,6 +338,40 @@ public:
     }
 
     FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT(manager);
+};
+
+/**
+ * Experimental version of the font management API with custom DPI support.
+ *
+ * One implementation in Columns UI - do not reimplement!
+ */
+class NOVTABLE manager_v2 : public service_base {
+public:
+    /** \brief Retrieve the font for the given client */
+    virtual LOGFONT get_client_font(GUID guid, unsigned dpi = USER_DEFAULT_SCREEN_DPI) const = 0;
+
+    /** \brief Retrieve a common font. */
+    virtual LOGFONT get_common_font(font_type_t type, unsigned dpi = USER_DEFAULT_SCREEN_DPI) const = 0;
+
+    /** \brief Set your font as 'Custom' and to the specified font. */
+    virtual void set_client_font(GUID guid, const LOGFONT& font, int point_size_tenths) = 0;
+
+    virtual void register_common_callback(common_callback* callback) = 0;
+    virtual void deregister_common_callback(common_callback* callback) = 0;
+
+    HFONT get_client_font_handle(GUID guid, unsigned dpi = USER_DEFAULT_SCREEN_DPI) const
+    {
+        LOGFONT lf = get_client_font(guid, dpi);
+        return CreateFontIndirect(&lf);
+    }
+
+    HFONT get_common_font_handle(const font_type_t type, unsigned dpi = USER_DEFAULT_SCREEN_DPI) const
+    {
+        LOGFONT lf = get_common_font(type, dpi);
+        return CreateFontIndirect(&lf);
+    }
+
+    FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT(manager_v2);
 };
 
 /** Helper to simplify retrieving the font for a specific client. */
